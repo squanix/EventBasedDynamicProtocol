@@ -4,7 +4,7 @@ The Event-based Dynamic protocol evaluation
 
 Authors   : 	Pahlevi, Rizka Reza; Shimada, Hajime
 Created on:   August 14th 2023	
-Update on : 	August 14th 2023
+Update on : 	August 15th 2023
 
 The proposed of this evaluation is to evaluate the event-based dynamic protocol porposed by Pahlevi et al. 
 
@@ -13,105 +13,107 @@ The proposed of this evaluation is to evaluate the event-based dynamic protocol 
 theory EventBasedDynamic
 begin
 
-builtins: hashing, asymmetric-encryption, symmetric-encryption
+builtins: diffie-hellman, hashing, asymmetric-encryption, symmetric-encryption
 
 // Registering the seedi
 rule Agreed_seed:
     [ Fr(~seed) ]
   -->
-    [ !Lts($A, ~seed) ]
+    [ !Lts($A, ~seed), !Ltsd($A, ~seed) ]
+
+rule Get_seed:
+    [ !Ltsd(A, seedkey) ]
+  -->
+    [ Out(seedkey) ]
+
+rule Reveal_seed:
+    [ !Lts(A, ltk) ]
+  --[ LtkReveal(A) ]->
+    [ Out(ltk) ]
 
 rule ComputedPr:
   let
-    PR = <~seed ,~qprime>
+    Y = seed^'qprime'
+    T = Y^('qroot'*~n)
+    PR = T*('qprime'*'prime')
   in
-    [ Fr(~qprime)
-    , Fr(~prime)
-    , Fr(~n)
-    , Lts($A, ~seed)
+    [ 
+    Fr(~n)
+    , !Ltsd(A, seed)
     ]
   -->
-    [!Cpr($A, ~qprime, ~prime, ~n, ~seed, PR)
+    [
+      !Cpr(~n, PR)
     ]
   
 rule ComputedEV:
   let
-    EV = <PR, rc>
+    E = <PR, ~rc>
   in
     [
-      !Cpr($A, ~qprime, ~prime, ~n, ~seed, PR)
-      , Fr(~rc)
+      Fr(~rc)
+      , !Cpr(n, PR)
     ]
     -->
     [
-      !Cev($A, ~rc, senc(EV, rc)) 
+      !Cev(senc(E, ~rc), ~rc) 
     ]
 
 rule Contact_1:
     [
-      !Ltk($A, ~seed)
-      , !Cpr(A, qprime, prime, n, seed, PR)
-      , !Cev(A, rc, senc(EV, rc)) 
+     !Cpr(n, PR)
+      , !Cev(ev1, rc) 
     ]
-    --[SessionSeed1(A, seed)]->
+    --[SessionSeed1($A, PR)]->
     [
-      !Contact1($A, $B, ~seed, ~qprime, ~prime, ~n, ~rc, PR, senc(EV, rc))
-      , Out(senc(EV, rc))
-    ]
-
-rule Contact_2:
-    [
-      In(senc(EV, rc))
-      , !Contact1(A, B, seed, qprime, prime, n, rc, PR, senc(EV, rc))
-      , !Ltk($A, ~seed1)
-      , !Cpr($A, ~qprime, ~prime, ~n, ~seed1, PR)
-      , !Cev($A, ~rc, senc(EV, rc)) 
-    ]
-    --[SessionSeed2(A, B ,seed1)]->
-    [
-      !Contact2($A, $B, ~seed1, ~qprime, ~prime, ~n, ~rc, PR, senc(EV, rc))
-      , Out(senc(EV, rc))
+      !Contact1($A, n, rc, PR)
+      , Out(ev1)
     ]
 
 rule Contact_3:
   [
-    In(senc(EV, rc))
-    , !Contact2(A, B, seed1, qprime, prime, n, rc, PR, senc(EV, rc))
+    In(ev2)
+    , !Contact2(A, n1, rc1, PR1)
   ]
-  --[SessionSeed3(A, B, seed1)]->
+  --[SessionSeed3(A, sdec(ev2, rc1))]->
   [
 
   ]
 
+rule Contact_2:
+    [
+      In(ev1)
+      , !Contact1(A, n, rc, PR)
+      , !Cpr( n1, PR1)
+      , !Cev(ev2, rc1) 
+      , !Lts($S, ~seed)
+    ]
+    --[SessionSeed2($S, sdec(ev1, rc)), SesSeed($S, ev1)]->
+    [
+      !Contact2(A, n1, rc1, PR1)
+      , Out(ev2)
+    ]
+
+lemma Client_auth:
+  " 
+   ( All S k #i. SesSeed(S, k) @ #i
+       ==>
+       ( 
+          Ex. SessionSeed3(S, k) @ #i
+       )
+    )
+  "
 
 lemma Client_session_key_secrecy1:
-  " /* It cannot be that a  */
-    not(
-      Ex S k #i #j.
-        /* client has set up a session key 'k' with a server'S' */
+  "
+    not (
+      Ex S k k1 k2 #i #j #u #r.
         SessionSeed1(S, k) @ #i
-        /* and the adversary knows 'k' */
-        & K(k) @ #j
-    )
-  "
-lemma Client_session_key_secrecy2:
-  " /* It cannot be that a  */
-    not(
-      Ex S Q k #i #j.
-        /* client has set up a session key 'k' with a server'S' */
-        SessionSeed2(S, Q, k) @ #i
-        /* and the adversary knows 'k' */
-        & K(k) @ #j
-    )
-  "
-lemma Client_session_key_secrecy3:
-  " /* It cannot be that a  */
-    not(
-      Ex S Q k #i #j.
-        /* client has set up a session key 'k' with a server'S' */
-        SessionSeed3(S, Q, k) @ #i
-        /* and the adversary knows 'k' */
-        & K(k) @ #j
+        & SessionSeed2(S, k1) @ #j
+        & SessionSeed3(S, k2) @ #u
+        & K(k) @ #r
+        & K(k1) @ #r
+        & K(k2) @ #r
     )
   "
 
