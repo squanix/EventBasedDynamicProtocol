@@ -16,9 +16,9 @@ begin
 builtins: diffie-hellman, symmetric-encryption
 
 rule Agreed_SymKey:
-  [ Fr(~R) ]
+  [ Fr(~keyr) ]
   -->
-  [ !SymKey(~R) ]
+  [ !SymKey($A, ~keyr) ]
 
 // Registering the seedi
 rule Agreed_seed:
@@ -31,26 +31,26 @@ rule Agreed_seed:
 */
 rule Enrollment:
   [ 
-    !SymKey(~R)
+    !SymKey($A, ~keyr)
   ]
-  --[Once(), Secure(~R)]->
+  --[Once(), Secure(~keyr)]->
   [
-    A0($A, $B, ~R), B0($B, $A, ~R)
+    !AB($A, $B, ~keyr)
   ]
 
 rule ComputedPr:
   let
-    Y = seed^'qprime'
+    Y = ~seed^'qprime'
     T = Y^('qroot'*~n)
     PR = T*('qprime'*'prime')
   in
     [ 
     Fr(~n)
-    , !Ltsd($A, seed)
+    , !Ltsd($A, ~seed)
     ]
   -->
     [
-      !Cpr($A, ~n, PR, seed)
+      !Cpr($A, ~n, PR, ~seed)
     ]
   
 rule ComputedEV:
@@ -70,38 +70,32 @@ rule ComputedEV:
   Initiation State
 */
 
-rule Init_A:
-  [ Fr(~id), A0(A, B, R) ]
-  --[ Initialise(A, ~id), Role('A')]->
-  [ A1(A, B, R), !KeyA(A, R)]
-
-rule Init_B:
-  [ Fr(~id), B0(B, A, R)]
---[ Initialise(B, ~id), Role('B')]->
-  [ B1(B, A, R), !KeyB(B, R)]
-
+rule Init_A_B:
+  [!AB($A, $B, keyr) ]
+  -->
+  [!KeyAB($A, $B, keyr)]
 
 rule Contact_1:
     [
      !Cev(E, n, PR, seed) 
-     , A1(A, B, R)
+     , !KeyAB(A, B, keyr)
     ]
-    --[SessionSeed1(A, E), Role('A'), Secret(seed), SendA(A, E)]->
+    --[SessionSeed1(A, E), Role('A'), Secret(seed), SeedA(A, seed), SendA(A, E)]->
     [
-      !Contact1(A, B, n, PR, R, seed, E)
-      , Out(senc(E, R))
+      !Contact1(A, B, n, PR, E)
+      , Out(senc(E, keyr))
     ]
 
 rule Contact_2:
     [
       In(ev1)
-      , !Cev(E, n, PR, seed) 
-      , B1(B, A, R)
+      , !Cev(E1, n1, PR1, seed1)
+      , !KeyAB(A, B, keyr)
     ]
-    --[SessionSeed2(A, E), SesSeed(A, sdec(E, R)), Role('B'), Secret(seed), SendB(B, E), ReceiveB(A, E)]->
+    --[SessionSeed2(A, E1), SesSeed(A, sdec(E1, keyr)), Role('B'), Secret(seed1), SeedB(B, seed1), SendB(B, E1), ReceiveB(A, E1)]->
     [
-      !Contact2(B, A, n, PR, R, seed, E)
-      , Out(senc(E, R))
+      !Contact2(B, A, n1, PR1, E1)
+      , Out(senc(E1, keyr))
     ]
 
 lemma Client_session_seed_secrecy:
@@ -116,18 +110,31 @@ lemma Client_session_seed_secrecy:
   "
 
 lemma seed_A:
-	"All x #i.
-	Secret(x) @i & Role('A') @i==> 
-	(not(Ex #j. K(x)@j)) 
+	"
+  All x #i.
+	  Secret(x) @i & Role('A') @i==> 
+	  (not(Ex #j. K(x)@j)) 
   "
 
 lemma seed_B:
-	"All x #i.
-	Secret(x) @i & Role('B') @i==> 
-	(not(Ex #j. K(x)@j)) 
+	"
+  All x #i.
+    Secret(x) @i & Role('B') @i==> 
+    (not(Ex #j. K(x)@j)) 
   "
 
 lemma executable: exists-trace
-"Ex A B m #i #j.
-    SendA(A,m) @i & ReceiveB(B,m) @j & i < j"
+"
+  Ex A B m #i #j.
+      SendA(A,m) @i & ReceiveB(B,m) @j & i < j
+"
+
+lemma AuthSeed:
+"
+ All A B s g #i #j.
+    SeedA(A, s) @i & SeedB(B, g) @j & i < j ==>
+    (
+      not (Ex #k. K(s)@k & K(g)@k)
+    )
+"
 end
